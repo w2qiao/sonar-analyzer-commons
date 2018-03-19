@@ -19,28 +19,35 @@
  */
 package org.sonarsource.analyzer.commons;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.Map;
 import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
-import jdk.nashorn.api.scripting.JSObject;
 
 /**
  * Not designed for multi-threads
  */
 class JsonParser {
-
-  private JSObject nashornParser;
+  private Method caller;
+  private Object obj;
 
   JsonParser() {
     try {
-      nashornParser = (JSObject) new ScriptEngineManager().getEngineByName("nashorn").eval("JSON.parse");
-    } catch (ScriptException e) {
+      obj = new ScriptEngineManager().getEngineByName("nashorn").eval("JSON.parse");
+      // obj is of type JSObject, but was potentially created by a different classloader, so it's risky to assign it to a JSObject.
+      caller = obj.getClass().getMethod("call", Object.class, Object[].class);
+    } catch (ScriptException | NoSuchMethodException e) {
       throw new IllegalStateException("Can not get 'JSON.parse' from 'nashorn' script engine.", e);
     }
   }
 
   Map<String, Object> parse(String data) {
-    return (Map<String, Object>) nashornParser.call(null, data);
+    try {
+      return (Map<String, Object>) caller.invoke(obj, null, new Object[] {data});
+    } catch (InvocationTargetException | IllegalAccessException e) {
+      throw new IllegalStateException("Failed to invoke 'nashorn' script engine.", e);
+    }
   }
 
 }
